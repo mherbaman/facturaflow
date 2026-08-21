@@ -1205,7 +1205,7 @@ function reviewDetail() {
     field("proveedor", conf.supplier_name, inp("supplier_name")) +
     '<div class="grid g2 gap2">' +
     field("NIF proveedor", conf.supplier_tax_id, inp("supplier_tax_id", "text", "mono")) +
-    '<div class="field"><div class="flex between mb1"><span class="label" style="font-size:9.5px">divisa</span></div><select class="inp inp-sm" data-sel="currency" ' + (editable ? "" : "disabled") + '><option' + (e.currency === "EUR" ? " selected" : "") + ">EUR</option><option" + (e.currency === "USD" ? " selected" : "") + ">USD</option><option" + (e.currency === "MXN" ? " selected" : "") + ">MXN</option></select></div>' +
+    '<div class="field"><div class="flex between mb1"><span class="label" style="font-size:9.5px">divisa</span></div><select class="inp inp-sm" data-sel="currency" ' + (editable ? "" : "disabled") + '><option' + (e.currency === "EUR" ? " selected" : "") + ">EUR</option><option" + (e.currency === "USD" ? " selected" : "") + ">USD</option><option" + (e.currency === "MXN" ? " selected" : "") + ">MXN</option></select></div>" +
     "</div>" +
     '<div class="grid g2 gap2">' +
     field("fecha emisión", conf.invoice_date, inp("invoice_date", "date", "mono")) +
