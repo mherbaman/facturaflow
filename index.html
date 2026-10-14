@@ -365,14 +365,14 @@ const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&a
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : "id-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 9));
 const round2 = n => Math.round(n * 100) / 100;
 const wait = ms => new Promise(r => setTimeout(r, ms));
-const eurFmt = new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR" });
+const eurFmt = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" });
 const eur = n => eurFmt.format(n);
 const pad2 = n => String(n).padStart(2, "0");
 const dateStr = d => d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate());
 const daysAgo = (d, h) => new Date(Date.now() - d * 864e5 - (h || 0) * 36e5).toISOString();
-const fmtDate = iso => { const d = new Date(iso.length === 10 ? iso + "T12:00:00" : iso); return d.toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "numeric" }); };
-const fmtDateTime = iso => { const d = new Date(iso); return d.toLocaleDateString("es-ES", { day: "2-digit", month: "short" }) + " · " + d.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }); };
-const monthShort = d => d.toLocaleDateString("es-ES", { month: "short" }).replace(".", "");
+const fmtDate = iso => { const d = new Date(iso.length === 10 ? iso + "T12:00:00" : iso); return d.toLocaleDateString("es-AR", { day: "2-digit", month: "short", year: "numeric" }); };
+const fmtDateTime = iso => { const d = new Date(iso); return d.toLocaleDateString("es-AR", { day: "2-digit", month: "short" }) + " · " + d.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }); };
+const monthShort = d => d.toLocaleDateString("es-AR", { month: "short" }).replace(".", "");
 function timeAgo(iso) {
   const min = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
   if (min < 1) return "ahora mismo";
@@ -507,7 +507,7 @@ function buildExtracted(seed) {
     invoice_number: "F-" + String(year).slice(2) + pad2(Math.floor(doy / 28) + 1) + "-" + String(1000 + Math.floor(rnd() * 9000)),
     supplier_name: sup.name, supplier_tax_id: sup.nif, invoice_date: invoice_date, due_date: due_date,
     subtotal: subtotal, tax_rate: sup.tax, tax_amount: tax_amount, total: round2(subtotal + tax_amount),
-    currency: "EUR", category: cat, items: items,
+    currency: "ARS", category: cat, items: items,
   };
 }
 
@@ -625,7 +625,7 @@ function seedDb() {
     const e = p.extracted;
     return {
       id: "a" + p.id, pending_id: p.id, invoice_number: e.invoice_number, supplier_name: e.supplier_name,
-      supplier_tax_id: e.supplier_tax_id, amount: e.total, currency: "EUR", tax_amount: e.tax_amount, subtotal: e.subtotal,
+      supplier_tax_id: e.supplier_tax_id, amount: e.total, currency: "ARS", tax_amount: e.tax_amount, subtotal: e.subtotal,
       invoice_date: e.invoice_date, due_date: e.due_date, category: e.category,
       description: e.items.map(i => i.description).join(" · ").slice(0, 160), file_url: p.file_url,
       reviewed_by: by, reviewed_at: daysAgo(days, 1), approved_at: daysAgo(days, 1),
@@ -875,7 +875,7 @@ function countUp(el) {
   const step = t => {
     const k = Math.min(1, (t - start) / dur);
     const v = to * (1 - Math.pow(1 - k, 3));
-    el.textContent = fmt ? eur(v) : v.toLocaleString("es-ES", { maximumFractionDigits: dec, minimumFractionDigits: dec });
+    el.textContent = fmt ? eur(v) : v.toLocaleString("es-AR", { maximumFractionDigits: dec, minimumFractionDigits: dec });
     if (k < 1) requestAnimationFrame(step);
   };
   requestAnimationFrame(step);
@@ -988,7 +988,7 @@ function dashboardView() {
   return '<div class="stack">' +
     '<div class="flex wrap gap2 between anim">' +
       '<div><h2 class="h-xl">Hola, ' + esc(u.full_name.split(" ")[0]) + '</h2>' +
-      '<p class="small mut mt1" style="margin:.35rem 0 0">' + now.toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" }) + " · " + ROLE_LABEL[u.role] + "</p></div>" +
+      '<p class="small mut mt1" style="margin:.35rem 0 0">' + now.toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" }) + " · " + ROLE_LABEL[u.role] + "</p></div>" +
       '<div class="flex gap2">' +
         (can("scan_invoices") ? '<button class="btn btn-primary" data-act="nav" data-view="scanner">' + IC.scan + " Escanear factura</button>" : "") +
         (can("approve_invoices") ? '<button class="btn btn-ghost" data-act="nav" data-view="review">' + IC.review + " Revisar cola (" + ready + ")</button>" : "") +
@@ -1013,7 +1013,7 @@ function dashboardView() {
       '<div class="stack">' +
         '<div class="card p4"><div class="flex between mb2"><p class="label">importe aprobado · 6 meses</p><span class="mono xs mut">invoices_approved</span></div>' +
           '<div class="bar-chart">' + months.map((m, i) =>
-            '<div class="bar-col" title="' + eur(m.total) + '"><span class="mono xs" style="color:var(--ink-500);font-variant-numeric:tabular-nums">' + (m.total ? eur(m.total).replace(/,\d+\s€/, " €").replace(" €", "k€").replace(eur(m.total), (m.total / 1000).toLocaleString("es-ES", { maximumFractionDigits: 1 })) + "k" : "") + '</span><div class="bar-track"><div class="bar-fill" style="height:' + Math.max(4, (m.total / maxM) * 100) + "%;animation-delay:" + (i * 0.06) + 's"></div></div><span class="bar-lbl">' + m.label + "</span></div>").join("") +
+            '<div class="bar-col" title="' + eur(m.total) + '"><span class="mono xs" style="color:var(--ink-500);font-variant-numeric:tabular-nums">' + (m.total ? eur(m.total).replace(/,\d+\s€/, " €").replace(" €", "k€").replace(eur(m.total), (m.total / 1000).toLocaleString("es-AR", { maximumFractionDigits: 1 })) + "k" : "") + '</span><div class="bar-track"><div class="bar-fill" style="height:' + Math.max(4, (m.total / maxM) * 100) + "%;animation-delay:" + (i * 0.06) + 's"></div></div><span class="bar-lbl">' + m.label + "</span></div>").join("") +
           "</div></div>" +
         '<div class="card p4"><p class="label mb2">top proveedores</p>' +
           (topSup.length ? topSup.map(s =>
@@ -1202,7 +1202,7 @@ function reviewDetail() {
     field("proveedor", conf.supplier_name, inp("supplier_name")) +
     '<div class="grid g2 gap2">' +
     field("NIF proveedor", conf.supplier_tax_id, inp("supplier_tax_id", "text", "mono")) +
-    '<div class="field"><div class="flex between mb1"><span class="label" style="font-size:9.5px">divisa</span></div><select class="inp inp-sm" data-sel="currency" ' + (editable ? "" : "disabled") + '><option' + (e.currency === "EUR" ? " selected" : "") + ">EUR</option><option" + (e.currency === "USD" ? " selected" : "") + ">USD</option><option" + (e.currency === "MXN" ? " selected" : "") + ">MXN</option></select></div>" +
+    '<div class="field"><div class="flex between mb1"><span class="label" style="font-size:9.5px">divisa</span></div><select class="inp inp-sm" data-sel="currency" disabled><option>ARS</option></select></div>' +
     "</div>" +
     '<div class="grid g2 gap2">' +
     field("fecha emisión", conf.invoice_date, inp("invoice_date", "date", "mono")) +
