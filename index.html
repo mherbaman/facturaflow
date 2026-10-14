@@ -351,6 +351,7 @@ select.inp{cursor:pointer}
 <body>
 <div id="app"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 "use strict";
 /* ============================================================
@@ -674,8 +675,8 @@ function loadDb() {
   try { localStorage.setItem(DB_KEY, JSON.stringify(fresh)); } catch (e) { /* cuota */ }
   return fresh;
 }
-DB = loadDb();
-function persist() { try { localStorage.setItem(DB_KEY, JSON.stringify(DB)); } catch (e) { /* memoria */ } }
+DB = { version: 1, users: [], pending: [], approved: [], audit: [], outbox: [] };
+function persist() { /* los datos viven en Supabase */ }
 function audit(user, action, table, rid, detail) {
   DB.audit.unshift({ id: uid(), user_id: user.id, user_name: user.full_name, action: action, table_name: table, record_id: rid, detail: detail, created_at: new Date().toISOString() });
   DB.audit = DB.audit.slice(0, 250);
@@ -885,11 +886,7 @@ function loginView() {
   const ready = DB.pending.filter(p => p.status === "ready_for_review").length;
   const trans = DB.pending.filter(p => p.status !== "approved" && p.status !== "rejected").length;
   const today = DB.pending.filter(p => sameDay(p.scanned_at, new Date())).length;
-  const acc = [
-    { n: "Laura Cárdenas", r: "Administración", e: "admin@facturaflow.app", p: "admin123", perms: ["Usuarios y roles", "Eliminar registros", "Todo el pipeline"], bord: "var(--warn-500)" },
-    { n: "Marcos Gil", r: "Revisor/a", e: "revisor@facturaflow.app", p: "revisor123", perms: ["Aprobar y rechazar", "Asignar revisión", "Exportar"], bord: "var(--pine-500)" },
-    { n: "Sofía Herrera", r: "Escaneador/a", e: "scanner@facturaflow.app", p: "scanner123", perms: ["Escanear", "Ver sus capturas"], bord: "var(--pine-300)" },
-  ];
+  const acc = [];
   return '<div class="login-wrap">' +
     '<div class="login-side">' +
       '<div class="flex gap2 anim"><span class="side-logo">' + IC.logo + '</span><div><p class="side-name" style="font-size:19px">FacturaFlow</p><p class="side-sub">gestión de facturas · PWA</p></div></div>' +
@@ -1677,7 +1674,7 @@ document.addEventListener("click", e => {
   const act = t.dataset.act;
 
   if (act === "nav") { S.view = t.dataset.view; if (t.dataset.view !== "review") S.reviewId = null; render(); window.scrollTo({ top: 0 }); return; }
-  if (act === "logout") { stopCamera(); try { localStorage.removeItem("ff_session_v1"); } catch (x) {} S.user = null; S.modal = null; S.reviewId = null; S.view = "dashboard"; render(); return; }
+  if (act === "logout") { stopCamera(); sb.auth.signOut(); DB.pending = []; DB.approved = []; DB.audit = []; try { localStorage.removeItem("ff_session_v1"); } catch (x) {} S.user = null; S.modal = null; S.reviewId = null; S.view = "dashboard"; render(); return; }
   if (act === "modal-close") { stopCamera(); S.modal = null; render(); return; }
   if (act === "toast-x") { S.toasts = S.toasts.filter(x => x.id !== t.dataset.id); render(); return; }
   if (act === "demo-login") { doLogin(t.dataset.e, t.dataset.p, t); return; }
@@ -1814,26 +1811,21 @@ document.addEventListener("submit", e => {
   }
 });
 
-function doLogin(email, pass, btnEl) {
-  if (!email || !pass) {
-    const el = $("#login-err");
-    if (el) el.innerHTML = '<p class="banner banner-err" style="padding:.5rem .8rem;font-size:12px">' + IC.alert + " Introduce correo y contraseña.</p>";
-    return;
-  }
+async function doLogin(email, pass, btnEl) {
+  const showErr = m => { const el = $("#login-err"); if (el) el.innerHTML = '<p class="banner banner-err" style="padding:.5rem .8rem;font-size:12px">' + IC.alert + " " + esc(m) + "</p>"; };
+  if (!email || !pass) { showErr("Introduce correo y contraseña."); return; }
   if (btnEl) { btnEl.disabled = true; btnEl.innerHTML = '<span class="spin" style="display:flex">' + IC.spinner + "</span> Verificando…"; }
-  setTimeout(() => {
-    try {
-      const u = apiLogin(email, pass);
-      S.user = u;
-      try { localStorage.setItem("ff_session_v1", u.id); } catch (x) {}
-      render();
-      toast("ok", "Bienvenido/a, " + u.full_name.split(" ")[0] + " · sesión iniciada");
-    } catch (ex) {
-      render();
-      const el = $("#login-err");
-      if (el) el.innerHTML = '<p class="banner banner-err" style="padding:.5rem .8rem;font-size:12px">' + IC.alert + " " + esc(ex.message) + "</p>";
-    }
-  }, 420);
+  try {
+    const r = await sb.auth.signInWithPassword({ email: String(email).trim(), password: pass });
+    if (r.error) throw new Error(r.error.message === "Invalid login credentials" ? "Credenciales no válidas." : r.error.message);
+    await hydrate();
+    const u = userById(r.data.user.id);
+    if (!u || !u.is_active) { await sb.auth.signOut(); throw new Error("Usuario desactivado o sin perfil. Contactá a administración."); }
+    S.user = u;
+    audit(u, "auth.login", "users", u.id, "Inicio de sesión correcto");
+    render();
+    toast("ok", "Bienvenido/a, " + u.full_name.split(" ")[0] + " · sesión iniciada");
+  } catch (ex) { render(); showErr(ex.message || String(ex)); }
 }
 
 /* entradas: actualización silenciosa (sin re-render → no se pierde el foco) */
@@ -1928,17 +1920,117 @@ function renderQueueOnly() { const el = $("#qlist"); if (el && S.user) { const t
 function renderInvoicesOnly() { const el = $("#inv-card"); if (el) { const wrap = document.createElement("div"); wrap.innerHTML = invoicesView(); const nl = wrap.querySelector("#inv-card"); if (nl) el.innerHTML = nl.innerHTML; } }
 function renderAuditOnly() { const el = $("#aud-card"); if (el) { const wrap = document.createElement("div"); wrap.innerHTML = auditView(); const nl = wrap.querySelector("#aud-card"); if (nl) el.innerHTML = nl.innerHTML; } }
 
+/* ---------------- Supabase (backend real) ---------------- */
+const SB_URL = "https://stetgjhkxqxlynvmfevn.supabase.co";
+const SB_KEY = "sb_publishable_BRpq5YtDqhygJoehe5tesw_p4PL6odX";
+const sb = window.supabase.createClient(SB_URL, SB_KEY);
+const ST_TO_DB = { processing: "capturada", scanned: "capturada", ready_for_review: "en_revision", approved: "aprobada", rejected: "rechazada" };
+const ST_FROM_DB = { capturada: "ready_for_review", en_revision: "ready_for_review", aprobada: "approved", enviada: "approved", error_envio: "approved", rechazada: "rejected" };
+
+let Q = Promise.resolve();
+function remote(label, fn) {
+  Q = Q.then(fn).catch(e => { console.error(label, e); toast("err", "No se pudo guardar en el servidor (" + label + "): " + (e.message || e)); });
+  return Q;
+}
+function mirror(x) {
+  const n = String(x.invoice_number || ""), m = n.match(/(\d{4,5})\D+(\d{6,8})\s*$/);
+  const t = v => (v === undefined || v === null || v === "") ? null : String(v);
+  return { nro_comprobante_orig: n.slice(0, 60) || null, punto_venta: m ? m[1] : null, nro_comprobante: m ? m[2] : null,
+    fecha_emision: t(x.invoice_date), fecha_vencimiento: t(x.due_date), nombre_proveedor: t(x.supplier_name), cuit: t(x.supplier_tax_id),
+    neto_gravado: t(x.subtotal), alicuota_iva_1: t(x.tax_rate), monto_iva_1: t(x.tax_amount), total_factura: t(x.total) };
+}
+function pToFields(p) {
+  const a = p._appr, src = a ? Object.assign({}, p.extracted, a, { total: a.amount }) : p.extracted, now = new Date().toISOString();
+  return Object.assign(mirror(src), {
+    status: ST_TO_DB[p.status] || "en_revision", reject_reason: p.reject_reason || null,
+    reviewed_by: a ? a.reviewed_by : (p.status === "rejected" ? S.user.id : null),
+    reviewed_at: a ? a.reviewed_at : (p.status === "rejected" ? now : null),
+    ocr_raw: { extracted: p.extracted, confidence: p.confidence, ocr_lines: p.ocr_lines, priority: p.priority, notes: p.notes || "",
+      original_filename: p.original_filename, assigned_reviewer: p.assigned_reviewer, approved: a ? Object.assign({}, a, { file_url: undefined }) : null },
+  });
+}
+async function uploadImage(p) {
+  if (!p.file_url || p.file_url.indexOf("data:") !== 0) return null;
+  const blob = await (await fetch(p.file_url)).blob();
+  const path = p.scanned_by + "/" + p.id + "." + ((blob.type.split("/")[1] || "bin").split("+")[0]);
+  const r = await sb.storage.from("facturas").upload(path, blob, { contentType: blob.type });
+  return r.error ? null : path;
+}
+function pushFactura(p) {
+  if (!p) return;
+  return remote("factura", async () => {
+    if (!p._remote) {
+      const path = await uploadImage(p).catch(() => null);
+      const r = await sb.from("facturas").insert(Object.assign({ id: p.id, created_by: p.scanned_by, created_at: p.scanned_at, image_path: path,
+        origen: "FACTURAFLOW", id_externo: p.id, referencia_origen: p.original_filename }, pToFields(p)));
+      if (r.error) throw r.error;
+      p._remote = true;
+    } else {
+      const r = await sb.from("facturas").update(pToFields(p)).eq("id", p.id);
+      if (r.error) throw r.error;
+    }
+  });
+}
+async function hydrate() {
+  const q = await Promise.all([
+    sb.from("profiles").select("*"),
+    sb.from("facturas").select("*").order("created_at", { ascending: false }).limit(500),
+    sb.from("audit_log").select("*").order("created_at", { ascending: false }).limit(300),
+  ]);
+  if (q[0].error) throw q[0].error; if (q[1].error) throw q[1].error;
+  DB.users = q[0].data.map(p => ({ id: p.id, email: p.email, full_name: p.full_name || p.email, role: p.role, is_active: p.active, created_at: p.created_at }));
+  const rows = q[1].data.filter(r => r.ocr_raw && r.ocr_raw.extracted), urls = {}, paths = rows.filter(r => r.image_path).map(r => r.image_path);
+  if (paths.length) { const sg = await sb.storage.from("facturas").createSignedUrls(paths, 3600); (sg.data || []).forEach(x => { if (x.signedUrl) urls[x.path] = x.signedUrl; }); }
+  DB.pending = []; DB.approved = [];
+  rows.forEach(r => {
+    const o = r.ocr_raw, st = ST_FROM_DB[r.status] || "ready_for_review", fu = urls[r.image_path] || "";
+    const p = { id: r.id, original_filename: o.original_filename || "factura", file_url: fu, extracted: o.extracted, confidence: o.confidence || {}, ocr_lines: o.ocr_lines || 0,
+      status: st, scanned_by: r.created_by, scanned_at: r.created_at, priority: o.priority || "medium", notes: o.notes || "", assigned_reviewer: o.assigned_reviewer || null,
+      reject_reason: r.reject_reason, synced: true, _remote: true };
+    if (st === "approved" && o.approved) { p._appr = Object.assign({}, o.approved, { file_url: fu }); DB.approved.push(p._appr); }
+    DB.pending.push(p);
+  });
+  DB.audit = (q[2].data || []).map(a => { const d = a.details || {}; return { id: String(a.id), user_id: a.user_id, user_name: d.user_name || "—", action: a.action, table_name: d.table_name || "invoices_pending", record_id: d.record_id || a.factura_id, detail: d.detail || "", created_at: a.created_at }; });
+  if (S.user) S.user = userById(S.user.id) || S.user;
+}
+
+const _audit = audit;
+audit = function (user, action, table, rid, detail) {
+  _audit(user, action, table, rid, detail);
+  const ap = DB.approved.find(x => x.id === rid), fid = pendingById(rid) ? rid : (ap ? ap.pending_id : null);
+  setTimeout(() => remote("auditoría", async () => {
+    const r = await sb.from("audit_log").insert({ factura_id: fid, user_id: user.id, action: action, details: { detail: detail, table_name: table, user_name: user.full_name, record_id: rid } });
+    if (r.error) throw r.error;
+  }), 0);
+};
+const _cs = apiCreateScan; apiCreateScan = function (input, user) { const rec = _cs(input, user); pushFactura(rec); setTimeout(() => pushFactura(rec), 3100); return rec; };
+const _as = apiAssign; apiAssign = function (id, rv, u) { _as(id, rv, u); pushFactura(pendingById(id)); };
+const _ap = apiApprove; apiApprove = function (id, v, u) { const a = _ap(id, v, u); const p = pendingById(id); if (p) p._appr = a; pushFactura(p); return a; };
+const _rj = apiReject; apiReject = function (id, reason, u) { _rj(id, reason, u); pushFactura(pendingById(id)); };
+const _da = apiDeleteApproved; apiDeleteApproved = function (id, u) {
+  const rec = DB.approved.find(x => x.id === id); _da(id, u);
+  if (rec) { const pid = rec.pending_id; DB.pending = DB.pending.filter(p => p.id !== pid); remote("eliminar", async () => { const r = await sb.from("facturas").delete().eq("id", pid); if (r.error) throw r.error; }); }
+};
+const _ua = apiSetUserActive; apiSetUserActive = function (id, active, a) { _ua(id, active, a); remote("usuario", async () => { const r = await sb.from("profiles").update({ active: active }).eq("id", id); if (r.error) throw r.error; }); };
+apiCreateUser = function () { throw new Error("Los usuarios se crean desde Supabase (Authentication → Users)."); };
+apiResetPassword = function () { throw new Error("Las contraseñas se restablecen desde Supabase por ahora."); };
+apiChangeOwnPassword = function () { throw new Error("El cambio de contraseña se hace desde Supabase por ahora."); };
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && S.user && !S.modal && !(S.view === "review" && S.reviewId)) hydrate().then(() => render()).catch(() => {});
+});
+
 /* ---------------- arranque ---------------- */
 window.addEventListener("online", () => { S.online = true; render(); toast("ok", "Conexión recuperada"); void processOutbox(); });
 window.addEventListener("offline", () => { S.online = false; render(); toast("warn", "Sin conexión · modo offline activo: las acciones se encolarán"); });
 
-(function boot() {
+(async function boot() {
+  render();
   try {
-    const sid = localStorage.getItem("ff_session_v1");
-    if (sid) { const u = userById(sid); if (u && u.is_active) S.user = u; }
+    const r = await sb.auth.getSession();
+    if (r.data && r.data.session) { await hydrate(); const u = userById(r.data.session.user.id); if (u && u.is_active) S.user = u; }
   } catch (x) { /* sin sesión */ }
   render();
-  if (S.online && DB.outbox.length) void processOutbox();
 })();
 </script>
 </body>
