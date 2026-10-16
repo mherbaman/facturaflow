@@ -1141,10 +1141,11 @@ function reviewDetail() {
   if (!rec) return reviewQueue();
   const u = S.user;
   const editable = can("approve_invoices") && rec.status !== "approved" && rec.status !== "rejected";
-  const e = ED;
+  const e = ED; normExt(e);
+  const num = k => '<input class="inp inp-sm mono" type="number" step="0.01" data-f="' + k + '" value="' + e[k] + '" ' + (editable ? "" : "readonly") + ">";
   const itemsTotal = round2(e.items.reduce((a, it) => a + it.qty * it.unit_price, 0));
   const expectedTax = round2((e.subtotal * e.tax_rate) / 100);
-  const totalsMismatch = Math.abs(e.subtotal + e.tax_amount - e.total) > 0.02;
+  const totalsMismatch = Math.abs(partsSum(e) - e.total) > 0.02;
   const taxMismatch = Math.abs(expectedTax - e.tax_amount) > 0.05;
   const errors = [];
   if (!e.supplier_name.trim()) errors.push("El proveedor es obligatorio");
@@ -1152,7 +1153,7 @@ function reviewDetail() {
   if (!e.invoice_date) errors.push("Falta la fecha de emisión");
   if (e.due_date && e.invoice_date && e.due_date < e.invoice_date) errors.push("El vencimiento es anterior a la emisión");
   if (e.total <= 0) errors.push("El total debe ser mayor que cero");
-  if (totalsMismatch) errors.push("Base + IVA no cuadra con el total");
+  if (totalsMismatch) errors.push("La suma de importes (neto + no gravado + IVA + otros) no cuadra con el total");
   const lowFields = Object.entries(rec.confidence).filter(kv => kv[1] < 0.75);
   const conf = rec.confidence;
   const scanner = userById(rec.scanned_by);
@@ -1195,37 +1196,40 @@ function reviewDetail() {
     '<div class="flex between" style="padding:.65rem 1.1rem;border-bottom:1px solid var(--ink-100)"><p class="label">datos extraídos · validación</p>' +
     '<span class="fchip ' + (lowFields.length ? "fchip-warn" : "fchip-ok") + '">' + (lowFields.length ? IC.alert + " " + lowFields.length + " campo(s) a verificar" : IC.check + " confianza alta") + "</span></div>" +
     '<div class="flex1 p4">' +
+    '<p class="label mb1">comprobante</p>' +
     '<div class="grid g2 gap2">' +
-    field("nº factura", conf.invoice_number, inp("invoice_number", "text", "mono")) +
-    field("categoría", conf.category, inp("category")) +
+    field("tipo (FA, FB, FC, NCA…)", conf.tipo_comprobante, inp("tipo_comprobante", "text", "mono")) +
+    field("punto de venta", conf.punto_venta, inp("punto_venta", "text", "mono")) +
     "</div>" +
-    field("proveedor", conf.supplier_name, inp("supplier_name")) +
     '<div class="grid g2 gap2">' +
-    field("NIF proveedor", conf.supplier_tax_id, inp("supplier_tax_id", "text", "mono")) +
-    '<div class="field"><div class="flex between mb1"><span class="label" style="font-size:9.5px">divisa</span></div><select class="inp inp-sm" data-sel="currency" disabled><option>ARS</option></select></div>' +
+    field("nº comprobante", conf.nro_comprobante, inp("nro_comprobante", "text", "mono")) +
+    field("nº original (texto completo)", conf.invoice_number, inp("invoice_number", "text", "mono")) +
+    "</div>" +
+    '<p class="label mb1 mt2">proveedor</p>' +
+    field("razón social", conf.supplier_name, inp("supplier_name")) +
+    '<div class="grid g2 gap2">' +
+    field("CUIT", conf.supplier_tax_id, inp("supplier_tax_id", "text", "mono")) +
+    '<div class="field"><div class="flex between mb1"><span class="label" style="font-size:9.5px">moneda</span></div><input class="inp inp-sm" value="ARS · pesos argentinos" readonly></div>' +
     "</div>" +
     '<div class="grid g2 gap2">' +
     field("fecha emisión", conf.invoice_date, inp("invoice_date", "date", "mono")) +
-    field("vencimiento", conf.due_date, inp("due_date", "date", "mono")) +
+    field("fecha vencimiento", conf.due_date, inp("due_date", "date", "mono")) +
     "</div>" +
-    '<p class="label mb1 mt2">partidas (' + e.items.length + ")</p>" +
-    '<div style="border:1px solid var(--ink-100);border-radius:11px;overflow:hidden"><table class="tbl"><thead><tr><th>concepto</th><th class="r" style="width:60px">cant.</th><th class="r" style="width:84px">precio</th><th class="r" style="width:92px">importe</th></tr></thead><tbody>' +
-    e.items.map((it, i) => '<tr><td><input class="edcell" data-fi="' + i + '" data-fk="description" value="' + esc(it.description) + '" ' + (editable ? "" : "readonly") + '></td>' +
-      '<td><input class="edcell r" type="number" min="0" data-fi="' + i + '" data-fk="qty" value="' + it.qty + '" ' + (editable ? "" : "readonly") + '></td>' +
-      '<td><input class="edcell r" type="number" step="0.01" min="0" data-fi="' + i + '" data-fk="unit_price" value="' + it.unit_price + '" ' + (editable ? "" : "readonly") + '></td>' +
-      '<td class="r mono" style="font-weight:700">' + eur(it.qty * it.unit_price) + "</td></tr>").join("") +
-    "</tbody></table></div>" +
-    '<div class="mt2" style="border:1px solid ' + (totalsMismatch ? "var(--danger-100)" : "var(--ink-100)") + ";background:" + (totalsMismatch ? "rgba(251,238,234,.6)" : "rgba(241,244,238,.7)") + ';border-radius:12px;padding:.9rem" id="totals-box">' +
-    '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:.7rem">' +
-    field("base", conf.subtotal, '<input class="inp inp-sm mono" type="number" step="0.01" data-f="subtotal" value="' + e.subtotal + '" ' + (editable ? "" : "readonly") + ">") +
-    field("IVA %", conf.tax_rate, '<input class="inp inp-sm mono" type="number" data-f="tax_rate" value="' + e.tax_rate + '" ' + (editable ? "" : "readonly") + ">") +
-    field("cuota IVA", conf.tax_amount, '<input class="inp inp-sm mono" type="number" step="0.01" data-f="tax_amount" value="' + e.tax_amount + '" ' + (editable ? "" : "readonly") + ">") +
-    field("total", conf.total, '<input class="inp inp-sm mono" style="font-weight:800" type="number" step="0.01" data-f="total" value="' + e.total + '" ' + (editable ? "" : "readonly") + ">") +
+    '<p class="label mb1 mt2">importes</p>' +
+    '<div style="border:1px solid ' + (totalsMismatch ? "var(--danger-100)" : "var(--ink-100)") + ";background:" + (totalsMismatch ? "rgba(251,238,234,.6)" : "rgba(241,244,238,.7)") + ';border-radius:12px;padding:.9rem" id="totals-box">' +
+    '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.7rem">' +
+    field("neto gravado", conf.subtotal, num("subtotal")) +
+    field("no gravado", null, num("no_gravado")) +
+    field("IVA 1 · alícuota %", conf.tax_rate, num("tax_rate")) +
+    field("IVA 1 · monto", conf.tax_amount, num("tax_amount")) +
+    field("IVA 2 · alícuota %", null, num("iva2_rate")) +
+    field("IVA 2 · monto", null, num("iva2_amount")) +
+    field("otros impuestos", null, num("otros_impuestos")) +
+    field("total", conf.total, num("total").replace('class="inp inp-sm mono"', 'class="inp inp-sm mono" style="font-weight:800"')) +
     "</div>" +
     '<div class="flex wrap gap1 mt1" id="totals-chips">' +
-    '<span class="fchip ' + (totalsMismatch ? "fchip-no" : "fchip-ok") + '">' + (totalsMismatch ? IC.x : IC.check) + " base + IVA = " + eur(round2(e.subtotal + e.tax_amount)) + "</span>" +
-    (taxMismatch ? '<span class="fchip fchip-warn">' + IC.alert + " cuota esperada " + eur(expectedTax) + "</span>" : "") +
-    (editable && (totalsMismatch || taxMismatch || Math.abs(itemsTotal - e.subtotal) > 0.02) ? '<button class="btn btn-warn btn-sm" style="margin-left:auto" data-act="recalc">' + IC.zap + " Recalcular desde partidas</button>" : "") +
+    '<span class="fchip ' + (totalsMismatch ? "fchip-no" : "fchip-ok") + '">' + (totalsMismatch ? IC.x : IC.check) + " suma de importes = " + eur(partsSum(e)) + "</span>" +
+    (taxMismatch ? '<span class="fchip fchip-warn">' + IC.alert + " IVA 1 esperado " + eur(expectedTax) + "</span>" : "") +
     "</div></div>" +
     '<div class="mt2" style="border:1px solid var(--ink-100);border-radius:12px;padding:.9rem"><p class="label mb1">controles de validación</p><div class="col gap1" id="checks-box">' +
     checks.map(c => '<span class="check ' + (c[0] ? "ok" : "no") + '">' + (c[0] ? IC.check : IC.x) + " " + c[1] + "</span>").join("") +
@@ -1580,15 +1584,13 @@ function openReview(id) {
 function refreshChecksLive() {
   if (!ED) return;
   const e = ED;
-  const totalsMismatch = Math.abs(e.subtotal + e.tax_amount - e.total) > 0.02;
+  const totalsMismatch = Math.abs(partsSum(e) - e.total) > 0.02;
   const itemsTotal = round2(e.items.reduce((a, it) => a + it.qty * it.unit_price, 0));
   const expectedTax = round2((e.subtotal * e.tax_rate) / 100);
   const taxMismatch = Math.abs(expectedTax - e.tax_amount) > 0.05;
   const chips = $("#totals-chips");
   if (chips) {
-    chips.innerHTML = '<span class="fchip ' + (totalsMismatch ? "fchip-no" : "fchip-ok") + '">' + (totalsMismatch ? IC.x : IC.check) + " base + IVA = " + eur(round2(e.subtotal + e.tax_amount)) + "</span>" +
-      (taxMismatch ? '<span class="fchip fchip-warn">' + IC.alert + " cuota esperada " + eur(expectedTax) + "</span>" : "") +
-      '<button class="btn btn-warn btn-sm" style="margin-left:auto;display:' + (totalsMismatch || taxMismatch || Math.abs(itemsTotal - e.subtotal) > 0.02 ? "" : "none") + '" data-act="recalc">' + IC.zap + " Recalcular desde partidas</button>";
+    chips.innerHTML = '<span class="fchip ' + (totalsMismatch ? "fchip-no" : "fchip-ok") + '">' + (totalsMismatch ? IC.x : IC.check) + " suma de importes = " + eur(partsSum(e)) + "</span>" + (taxMismatch ? '<span class="fchip fchip-warn">' + IC.alert + " IVA 1 esperado " + eur(expectedTax) + "</span>" : "");
   }
   const checks = [
     [!!e.supplier_name.trim() && !!e.invoice_number.trim(), "Proveedor y número identificados"],
@@ -1861,7 +1863,7 @@ document.addEventListener("input", e => {
   if (el.id === "scan-notes") { S.notes = el.value; return; }
   if (el.dataset && el.dataset.f && ED) {
     const k = el.dataset.f;
-    ED[k] = (k === "subtotal" || k === "tax_rate" || k === "tax_amount" || k === "total") ? (parseFloat(el.value) || 0) : el.value;
+    ED[k] = (NUMF.indexOf(k) >= 0) ? (parseFloat(el.value) || 0) : el.value;
     refreshChecksLive();
     return;
   }
@@ -1934,13 +1936,6 @@ function remote(label, fn) {
   Q = Q.then(fn).catch(e => { console.error(label, e); toast("err", "No se pudo guardar en el servidor (" + label + "): " + (e.message || e)); });
   return Q;
 }
-function mirror(x) {
-  const n = String(x.invoice_number || ""), m = n.match(/(\d{4,5})\D+(\d{6,8})\s*$/);
-  const t = v => (v === undefined || v === null || v === "") ? null : String(v);
-  return { nro_comprobante_orig: n.slice(0, 60) || null, punto_venta: m ? m[1] : null, nro_comprobante: m ? m[2] : null,
-    fecha_emision: t(x.invoice_date), fecha_vencimiento: t(x.due_date), nombre_proveedor: t(x.supplier_name), cuit: t(x.supplier_tax_id),
-    neto_gravado: t(x.subtotal), alicuota_iva_1: t(x.tax_rate), monto_iva_1: t(x.tax_amount), total_factura: t(x.total) };
-}
 function pToFields(p) {
   const a = p._appr, src = a ? Object.assign({}, p.extracted, a, { total: a.amount }) : p.extracted, now = new Date().toISOString();
   return Object.assign(mirror(src), {
@@ -1964,7 +1959,7 @@ function pushFactura(p) {
     if (!p._remote) {
       const path = await uploadImage(p).catch(() => null);
       const r = await sb.from("facturas").insert(Object.assign({ id: p.id, created_by: p.scanned_by, created_at: p.scanned_at, image_path: path,
-        origen: "FACTURAFLOW", id_externo: p.id, referencia_origen: p.original_filename }, pToFields(p)));
+        origen: "APP_OCR", id_externo: p.id, referencia_origen: p.original_filename }, pToFields(p)));
       if (r.error) throw r.error;
       p._remote = true;
     } else {
@@ -1986,7 +1981,7 @@ async function hydrate() {
   DB.pending = []; DB.approved = [];
   rows.forEach(r => {
     const o = r.ocr_raw, st = ST_FROM_DB[r.status] || "ready_for_review", fu = urls[r.image_path] || "";
-    const p = { id: r.id, original_filename: o.original_filename || "factura", file_url: fu, extracted: o.extracted, confidence: o.confidence || {}, ocr_lines: o.ocr_lines || 0,
+    const p = { id: r.id, original_filename: o.original_filename || "factura", file_url: fu, extracted: normExt(o.extracted), confidence: o.confidence || {}, ocr_lines: o.ocr_lines || 0,
       status: st, scanned_by: r.created_by, scanned_at: r.created_at, priority: o.priority || "medium", notes: o.notes || "", assigned_reviewer: o.assigned_reviewer || null,
       reject_reason: r.reject_reason, synced: true, _remote: true };
     if (st === "approved" && o.approved) { p._appr = Object.assign({}, o.approved, { file_url: fu }); DB.approved.push(p._appr); }
@@ -2007,7 +2002,7 @@ audit = function (user, action, table, rid, detail) {
 };
 const _cs = apiCreateScan; apiCreateScan = function (input, user) { const rec = _cs(input, user); pushFactura(rec); setTimeout(() => pushFactura(rec), 3100); return rec; };
 const _as = apiAssign; apiAssign = function (id, rv, u) { _as(id, rv, u); pushFactura(pendingById(id)); };
-const _ap = apiApprove; apiApprove = function (id, v, u) { const a = _ap(id, v, u); const p = pendingById(id); if (p) p._appr = a; pushFactura(p); return a; };
+const _ap = apiApprove; apiApprove = function (id, v, u) { const a = _ap(id, v, u); ["tipo_comprobante", "punto_venta", "nro_comprobante", "no_gravado", "tax_rate", "iva2_rate", "iva2_amount", "otros_impuestos"].forEach(k => { a[k] = v[k]; }); const p = pendingById(id); if (p) p._appr = a; pushFactura(p); return a; };
 const _rj = apiReject; apiReject = function (id, reason, u) { _rj(id, reason, u); pushFactura(pendingById(id)); };
 const _da = apiDeleteApproved; apiDeleteApproved = function (id, u) {
   const rec = DB.approved.find(x => x.id === id); _da(id, u);
@@ -2033,12 +2028,49 @@ performOCR = async function (fname, size, dataUrl, onStage) {
     const d = r.data;
     if (!d || d.error || !d.extracted) throw new Error((d && d.error) || "El OCR no devolvió datos.");
     const ex = d.extracted, cf = d.confidence || {};
-    ex.currency = "ARS";
+    ex.currency = "ARS"; normExt(ex);
+    const pc = ex.punto_venta ? (cf.invoice_number || 0) : 0; cf.punto_venta = pc; cf.nro_comprobante = pc; cf.tipo_comprobante = ex.tipo_comprobante ? 0.6 : 0;
     if (!ex.category) { ex.category = CAT_KEYS[0]; cf.category = 0.3; }
     if (!ex.items || !ex.items.length) { ex.items = [{ description: "(sin detalle de ítems)", qty: 1, unit_price: ex.subtotal || 0 }]; cf.items = 0.3; }
     return { extracted: ex, confidence: cf, docUrl: dataUrl, lines: d.lines || 0, source: "azure" };
   } finally { clearInterval(tm); }
 };
+
+/* ---------------- Campos del cliente (IMP_COMPRAS_STG) ---------------- */
+const NUMF = ["subtotal", "tax_rate", "tax_amount", "total", "no_gravado", "iva2_rate", "iva2_amount", "otros_impuestos"];
+function partsSum(e) { return round2(e.subtotal + e.no_gravado + e.tax_amount + e.iva2_amount + e.otros_impuestos); }
+function parseComp(s) {
+  s = String(s || ""); const r = { tipo_comprobante: "", punto_venta: "", nro_comprobante: "" };
+  const m = s.match(/(\d{4,5})\s*[-–]\s*(\d{6,8})/);
+  if (m) { r.punto_venta = m[1]; r.nro_comprobante = m[2]; }
+  const L = s.match(/\b(?:factura|fact|fc|nota\s+de\s+cr[eé]dito|nc|nota\s+de\s+d[eé]bito|nd)\b[\s.:\-]*([ABCM])\b/i);
+  if (L) { const nc = /cr[eé]dito|^nc/i.test(L[0]), nd = /d[eé]bito|^nd/i.test(L[0]); r.tipo_comprobante = (nc ? "NC" : nd ? "ND" : "F") + L[1].toUpperCase(); }
+  return r;
+}
+function normExt(e) {
+  ["no_gravado", "iva2_rate", "iva2_amount", "otros_impuestos"].forEach(k => { if (typeof e[k] !== "number") e[k] = parseFloat(e[k]) || 0; });
+  ["tipo_comprobante", "punto_venta", "nro_comprobante"].forEach(k => { if (e[k] == null) e[k] = ""; });
+  if (!e.punto_venta && !e.nro_comprobante) { const p = parseComp(e.invoice_number); e.punto_venta = p.punto_venta; e.nro_comprobante = p.nro_comprobante; if (!e.tipo_comprobante) e.tipo_comprobante = p.tipo_comprobante; }
+  return e;
+}
+// Columnas espejo de IMP_COMPRAS_STG: texto, importes con 2 decimales (punto), fechas dd/mm/aaaa, vacío = NULL
+function mirror(x) {
+  const t = v => (v === undefined || v === null || String(v).trim() === "") ? null : String(v).trim();
+  const n2 = v => (v === undefined || v === null || v === "" || isNaN(Number(v))) ? null : Number(v).toFixed(2);
+  const dmy = d => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d || ""); return m ? m[3] + "/" + m[2] + "/" + m[1] : t(d); };
+  const rate = v => (!Number(v)) ? null : String(Number(v));
+  const has2 = !!Number(x.iva2_rate);
+  return {
+    tipo_comprobante: t(x.tipo_comprobante), punto_venta: t(x.punto_venta), nro_comprobante: t(x.nro_comprobante),
+    nro_comprobante_orig: t(x.invoice_number) ? String(x.invoice_number).trim().slice(0, 60) : null,
+    fecha_emision: dmy(x.invoice_date), fecha_vencimiento: dmy(x.due_date),
+    nombre_proveedor: t(x.supplier_name), cuit: t(x.supplier_tax_id),
+    neto_gravado: n2(x.subtotal), monto_no_gravado: n2(x.no_gravado),
+    alicuota_iva_1: rate(x.tax_rate), monto_iva_1: n2(x.tax_amount),
+    alicuota_iva_2: has2 ? rate(x.iva2_rate) : null, monto_iva_2: has2 ? n2(x.iva2_amount) : null,
+    otros_impuestos: n2(x.otros_impuestos), total_factura: n2(x.total),
+  };
+}
 
 /* ---------------- arranque ---------------- */
 window.addEventListener("online", () => { S.online = true; render(); toast("ok", "Conexión recuperada"); void processOutbox(); });
