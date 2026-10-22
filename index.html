@@ -1154,18 +1154,21 @@ function reviewDetail() {
   if (e.due_date && e.invoice_date && e.due_date < e.invoice_date) errors.push("El vencimiento es anterior a la emisión");
   if (e.total <= 0) errors.push("El total debe ser mayor que cero");
   if (totalsMismatch) errors.push("La suma de importes (neto + no gravado + IVA + otros) no cuadra con el total");
+  const stg = stgCheck(e);
+  stg.msgs.forEach(m => errors.push(m));
   const lowFields = Object.entries(rec.confidence).filter(kv => kv[1] < 0.75);
   const conf = rec.confidence;
   const scanner = userById(rec.scanned_by);
   const reviewers = DB.users.filter(x => x.role !== "scanner" && x.is_active);
 
   const field = (lbl, confV, inner) => '<div class="field"><div class="flex between mb1"><span class="label" style="font-size:9.5px">' + lbl + "</span>" + (confV != null ? confBar(confV) : "") + "</div>" + inner + "</div>";
-  const inp = (k, type, cls) => '<input class="inp inp-sm ' + (cls || "") + '" type="' + (type || "text") + '" data-f="' + k + '" value="' + esc(e[k]) + '" ' + (editable ? "" : "readonly") + ">";
+  const inp = (k, type, cls) => '<input class="inp inp-sm ' + (cls || "") + '" type="' + (type || "text") + '" data-f="' + k + '" value="' + esc(e[k]) + '" ' + (editable ? "" : "readonly") + (STG_MAX[k] ? ' maxlength="' + STG_MAX[k] + '"' : "") + (editable && stg.bad[k] ? ' style="border-color:var(--danger-600)"' : "") + ">";
 
   const checks = [
     [!!e.supplier_name.trim() && !!e.invoice_number.trim(), "Proveedor y número identificados"],
     [!!e.invoice_date && (!e.due_date || e.due_date >= e.invoice_date), "Fechas coherentes"],
     [!totalsMismatch && e.total > 0, "Totales cuadran con el documento"],
+    [stg.msgs.length === 0, stg.msgs.length ? stg.msgs.join(" · ") : "Tipo, punto de venta, número y CUIT válidos"],
     [lowFields.length === 0, "Confianza OCR suficiente en todos los campos"],
   ];
 
@@ -1601,15 +1604,21 @@ function refreshChecksLive() {
   if (box) {
     const low = S.reviewId ? (pendingById(S.reviewId) || { confidence: {} }).confidence : {};
     const lowN = Object.values(low).filter(v => v < 0.75).length;
+    const stgL = stgCheck(e);
+    checks.push([stgL.msgs.length === 0, stgL.msgs.length ? stgL.msgs.join(" · ") : "Tipo, punto de venta, número y CUIT válidos"]);
     checks.push([lowN === 0, "Confianza OCR suficiente en todos los campos"]);
     box.innerHTML = checks.map(c => '<span class="check ' + (c[0] ? "ok" : "no") + '">' + (c[0] ? IC.check : IC.x) + " " + c[1] + "</span>").join("");
   }
   const btn = $("#approve-btn");
   if (btn) {
     const bad = !e.supplier_name.trim() || !e.invoice_number.trim() || !e.invoice_date ||
-      (e.due_date && e.invoice_date && e.due_date < e.invoice_date) || e.total <= 0 || totalsMismatch;
+      (e.due_date && e.invoice_date && e.due_date < e.invoice_date) || e.total <= 0 || totalsMismatch || stgCheck(e).msgs.length > 0;
     btn.disabled = !!bad;
   }
+  const stgB = stgCheck(e).bad;
+  document.querySelectorAll("input[data-f]").forEach(el => {
+    if (STG_MAX[el.dataset.f]) el.style.borderColor = (!el.readOnly && stgB[el.dataset.f]) ? "var(--danger-600)" : "";
+  });
   document.querySelectorAll("input[data-fi]").forEach(inp2 => {
     const i = parseInt(inp2.dataset.fi, 10);
     const td = inp2.closest("td");
@@ -1631,6 +1640,10 @@ function refreshChecksLive() {
 function doApprove() {
   const rec = pendingById(S.reviewId);
   if (!rec || !ED) return;
+  ["tipo_comprobante", "punto_venta", "nro_comprobante", "invoice_number", "supplier_name", "supplier_tax_id"].forEach(k => { ED[k] = cleanTxt(ED[k]); });
+  ED.tipo_comprobante = ED.tipo_comprobante.toUpperCase();
+  const stgOk = stgCheck(ED);
+  if (stgOk.msgs.length) { toast("err", stgOk.msgs[0]); return; }
   if (!S.online) {
     rec.__valid = ED;
     DB.outbox.push({ id: uid(), kind: "approve", payload: { id: rec.id }, created_at: new Date().toISOString() });
@@ -2039,6 +2052,29 @@ performOCR = async function (fname, size, dataUrl, onStage) {
 /* ---------------- Campos del cliente (IMP_COMPRAS_STG) ---------------- */
 const NUMF = ["subtotal", "tax_rate", "tax_amount", "total", "no_gravado", "iva2_rate", "iva2_amount", "otros_impuestos"];
 function partsSum(e) { return round2(e.subtotal + e.no_gravado + e.tax_amount + e.iva2_amount + e.otros_impuestos); }
+const STG_MAX = { tipo_comprobante: 20, punto_venta: 20, nro_comprobante: 30, invoice_number: 60, supplier_name: 200, supplier_tax_id: 30 };
+function cleanTxt(s) { return String(s == null ? "" : s).replace(/\s+/g, " ").trim(); }
+function validCuit(c) {
+  const d = String(c || "").replace(/\D/g, "");
+  if (d.length !== 11) return false;
+  const w = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2];
+  let dv = 11 - (w.reduce((a, wi, i) => a + wi * Number(d[i]), 0) % 11);
+  if (dv === 11) dv = 0;
+  const last = Number(d[10]);
+  if (dv === 10) return d.slice(0, 2) === "23" && (last === 4 || last === 9);
+  return dv === last;
+}
+// Qué falta para poder enviar la factura a IMP_COMPRAS_STG (el cliente detecta duplicados con TIPO + CUIT + PV + NRO)
+function stgCheck(e) {
+  const msgs = [], bad = {};
+  const need = (k, txt) => { if (!cleanTxt(e[k])) { msgs.push(txt); bad[k] = true; } };
+  need("tipo_comprobante", "Falta el tipo de comprobante (FA, FB, FC, NCA…)");
+  need("punto_venta", "Falta el punto de venta");
+  need("nro_comprobante", "Falta el número de comprobante");
+  if (!cleanTxt(e.supplier_tax_id)) { msgs.push("Falta el CUIT"); bad.supplier_tax_id = true; }
+  else if (!validCuit(e.supplier_tax_id)) { msgs.push("CUIT inválido (11 dígitos y dígito verificador)"); bad.supplier_tax_id = true; }
+  return { msgs: msgs, bad: bad };
+}
 function parseComp(s) {
   s = String(s || ""); const r = { tipo_comprobante: "", punto_venta: "", nro_comprobante: "" };
   const m = s.match(/(\d{4,5})\s*[-–]\s*(\d{6,8})/);
@@ -2055,14 +2091,14 @@ function normExt(e) {
 }
 // Columnas espejo de IMP_COMPRAS_STG: texto, importes con 2 decimales (punto), fechas dd/mm/aaaa, vacío = NULL
 function mirror(x) {
-  const t = v => (v === undefined || v === null || String(v).trim() === "") ? null : String(v).trim();
+  const t = v => { const s = (v === undefined || v === null) ? "" : String(v).replace(/\s+/g, " ").trim(); return s === "" ? null : s; };
   const n2 = v => (v === undefined || v === null || v === "" || isNaN(Number(v))) ? null : Number(v).toFixed(2);
   const dmy = d => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d || ""); return m ? m[3] + "/" + m[2] + "/" + m[1] : t(d); };
   const rate = v => (!Number(v)) ? null : String(Number(v));
   const has2 = !!Number(x.iva2_rate);
   return {
     tipo_comprobante: t(x.tipo_comprobante), punto_venta: t(x.punto_venta), nro_comprobante: t(x.nro_comprobante),
-    nro_comprobante_orig: t(x.invoice_number) ? String(x.invoice_number).trim().slice(0, 60) : null,
+    nro_comprobante_orig: t(x.invoice_number) ? t(x.invoice_number).slice(0, 60) : null,
     fecha_emision: dmy(x.invoice_date), fecha_vencimiento: dmy(x.due_date),
     nombre_proveedor: t(x.supplier_name), cuit: t(x.supplier_tax_id),
     neto_gravado: n2(x.subtotal), monto_no_gravado: n2(x.no_gravado),
