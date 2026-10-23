@@ -1073,19 +1073,17 @@ function scannerView() {
   if (S.scanStep === "result" && S.scanRes) {
     const r = S.scanRes;
     const avg = Math.round(avgConf(r.confidence) * 100);
-    const fields = [
-      ["invoice_number", "nº factura"], ["supplier_name", "proveedor"], ["supplier_tax_id", "NIF"],
-      ["invoice_date", "fecha"], ["due_date", "vencimiento"], ["total", "total"],
-    ];
+    const lowN = Object.values(r.confidence || {}).filter(v => v < 0.75).length;
     return '<div class="grid g2">' +
       '<div class="card anim" style="overflow:hidden"><div class="flex between" style="padding:.7rem 1.1rem;border-bottom:1px solid var(--ink-100)"><p class="label">documento capturado</p><span class="mono xs mut">' + (r.source === "synthetic" ? "documento sintético" : (isPdfSrc(r.docUrl) ? "PDF original" : "imagen original")) + "</span></div>" +
       docPrev(r.docUrl, "", "Documento " + r.extracted.invoice_number, true) +
       '<div class="flex gap1 p4" style="padding-top:.7rem;padding-bottom:.7rem">' + IC.layers + '<p class="xs mut" style="margin:0">' + r.lines + ' líneas detectadas · confianza media <strong style="color:var(--pine-700)">' + avg + " %</strong></p></div></div>" +
       '<div class="card anim d1" style="display:flex;flex-direction:column;overflow:hidden">' +
-      '<div class="flex between" style="padding:.7rem 1.1rem;border-bottom:1px solid var(--ink-100)"><p class="label">datos extraídos · extracted_data</p><span class="fchip fchip-ok">' + avg + " %</span></div>" +
-      '<div class="flex1 p4"><div class="grid g2 gap2 mb2">' + fields.map(f =>
-        '<div><div class="flex between mb1"><span class="label" style="font-size:9.5px">' + f[1] + "</span>" + confBar(r.confidence[f[0]] || 0.8) + '</div><p class="kv" style="margin:0">' + esc(f[0] === "total" ? eur(r.extracted.total) : r.extracted[f[0]]) + "</p></div>").join("") + "</div>" +
-      '<p class="label mb1">partidas</p><div style="border:1px solid var(--ink-100);border-radius:11px;overflow:hidden"><table class="tbl"><tbody>' +
+      '<div class="flex between" style="padding:.7rem 1.1rem;border-bottom:1px solid var(--ink-100)"><p class="label">datos extraídos · base transitoria</p><span class="fchip ' + (lowN ? "fchip-warn" : "fchip-ok") + '">' + (lowN ? IC.alert + " " + lowN + " campo(s) a verificar" : IC.check + " confianza alta") + "</span></div>" +
+      '<div class="flex1 p4">' + scanSummaryHtml(r) +
+      '<div class="flex gap1 mt2" style="align-items:flex-start;border:1px solid var(--ink-100);border-radius:10px;padding:.65rem .8rem;background:rgba(241,244,238,.7)">' + IC.shield + '<p class="xs mut" style="margin:0">Estos son los datos que se guardan en la base transitoria. <strong>Nada llega al sistema del cliente hasta que un auditor los revisa y los aprueba.</strong></p></div>' +
+      '<p class="label mb1 mt2">partidas</p>' +
+      '<div style="border:1px solid var(--ink-100);border-radius:11px;overflow:hidden"><table class="tbl"><tbody>' +
       r.extracted.items.map(it => '<tr><td>' + esc(it.description) + '</td><td class="r mono xs mut">' + it.qty + " × " + it.unit_price.toFixed(2) + '</td><td class="r mono" style="font-weight:700">' + eur(it.qty * it.unit_price) + "</td></tr>").join("") +
       '<tr style="background:var(--paper)"><td colspan="2" class="xs" style="font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-500)">base ' + eur(r.extracted.subtotal) + " · IVA " + r.extracted.tax_rate + ' %</td><td class="r mono" style="font-weight:800;color:var(--pine-800)">' + eur(r.extracted.total) + "</td></tr>" +
       "</tbody></table></div>" +
@@ -1461,7 +1459,7 @@ function modalLayer() {
     const rec = DB.approved.find(a => a.id === m.id);
     if (!rec) return "";
     const rev = userById(rec.reviewed_by);
-    const rows = [["proveedor", esc(rec.supplier_name)], ["NIF", esc(rec.supplier_tax_id)], ["fecha emisión", fmtDate(rec.invoice_date)], ["vencimiento", fmtDate(rec.due_date)], ["base imponible", eur(rec.subtotal)], ["cuota IVA", eur(rec.tax_amount)], ["total", eur(rec.amount)], ["categoría", esc(rec.category)], ["revisada por", esc(rev ? rev.full_name : "-")], ["ciclo", rec.cycle_minutes + " min desde el escaneo"]];
+    const rows = [["proveedor", esc(rec.supplier_name)], ["CUIT", esc(rec.supplier_tax_id)], ["fecha emisión", fmtDate(rec.invoice_date)], ["vencimiento", fmtDate(rec.due_date)], ["base imponible", eur(rec.subtotal)], ["cuota IVA", eur(rec.tax_amount)], ["total", eur(rec.amount)], ["categoría", esc(rec.category)], ["revisada por", esc(rev ? rev.full_name : "-")], ["ciclo", rec.cycle_minutes + " min desde el escaneo"]];
     return bg + '<div class="modal wide"><div class="modal-h"><h3>' + esc(rec.invoice_number) + " · " + esc(rec.supplier_name) + "</h3>" + close + '</div><div class="modal-b"><div class="grid g2" style="align-items:start">' +
       docPrev(rec.file_url, "", "Documento " + rec.invoice_number, true) +
       "<div>" + rows.map(r => '<div class="flex between" style="border-bottom:1px solid var(--ink-100);padding:.4rem 0;gap:1rem"><span class="label" style="font-size:9.5px">' + r[0] + '</span><span style="font-weight:600;font-size:13px' + (r[0] === "total" ? ";font-family:var(--mono);font-size:16px;color:var(--pine-800)" : "") + '">' + r[1] + "</span></div>").join("") +
@@ -1800,7 +1798,7 @@ document.addEventListener("click", e => {
     if (S.qInv.trim()) { const q = S.qInv.trim().toLowerCase(); list = list.filter(a => a.supplier_name.toLowerCase().includes(q) || a.invoice_number.toLowerCase().includes(q)); }
     if (!list.length) { toast("warn", "No hay facturas aprobadas que exportar"); return; }
     downloadCSV("facturaflow_definitivas.csv",
-      ["Nº factura", "Proveedor", "NIF", "Fecha", "Vencimiento", "Base", "IVA", "Total", "Divisa", "Categoría", "Revisada por"],
+      ["Nº factura", "Proveedor", "CUIT", "Fecha", "Vencimiento", "Base", "IVA", "Total", "Divisa", "Categoría", "Revisada por"],
       list.map(r => { const rv = userById(r.reviewed_by); return [r.invoice_number, r.supplier_name, r.supplier_tax_id, r.invoice_date, r.due_date, r.subtotal.toFixed(2), r.tax_amount.toFixed(2), r.amount.toFixed(2), r.currency, r.category, rv ? rv.full_name : "-"]; }));
     audit(S.user, "data.export", "invoices_approved", "-", "Exportación CSV · " + list.length + " registros");
     save();
@@ -2071,7 +2069,7 @@ performOCR = async function (fname, size, dataUrl, onStage) {
     if (!d || d.error || !d.extracted) throw new Error((d && d.error) || "El OCR no devolvió datos.");
     const ex = d.extracted, cf = d.confidence || {};
     ex.currency = "ARS"; normExt(ex);
-    const pc = ex.punto_venta ? (cf.invoice_number || 0) : 0; cf.punto_venta = pc; cf.nro_comprobante = pc; cf.tipo_comprobante = ex.tipo_comprobante ? 0.6 : 0;
+    const pc = ex.punto_venta ? (cf.invoice_number || 0) : 0; cf.punto_venta = pc; cf.nro_comprobante = pc; cf.tipo_comprobante = ex.tipo_comprobante ? (cf.tipo_comprobante || 0.6) : 0;
     if (!ex.category) { ex.category = CAT_KEYS[0]; cf.category = 0.3; }
     if (!ex.items || !ex.items.length) { ex.items = [{ description: "(sin detalle de ítems)", qty: 1, unit_price: ex.subtotal || 0 }]; cf.items = 0.3; }
     return { extracted: ex, confidence: cf, docUrl: dataUrl, lines: d.lines || 0, source: "azure" };
@@ -2081,6 +2079,43 @@ performOCR = async function (fname, size, dataUrl, onStage) {
 /* ---------------- Campos del cliente (IMP_COMPRAS_STG) ---------------- */
 const NUMF = ["subtotal", "tax_rate", "tax_amount", "total", "no_gravado", "iva2_rate", "iva2_amount", "otros_impuestos"];
 function partsSum(e) { return round2(e.subtotal + e.no_gravado + e.tax_amount + e.iva2_amount + e.otros_impuestos); }
+function fmtDMY(d) { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d || ""); return m ? m[3] + "/" + m[2] + "/" + m[1] : String(d || ""); }
+// Resumen de TODOS los campos que se guardan en la base transitoria (los mismos de IMP_COMPRAS_STG), con su confianza
+function scanSummaryHtml(r) {
+  const e = r.extracted, c = r.confidence || {};
+  const isEmpty = v => v === null || v === undefined || String(v).trim() === "";
+  const miss = '<span style="color:var(--warn-600);font-style:italic">sin leer · lo completa el auditor</span>';
+  const none = '<span class="mut">—</span>';
+  const cell = (lbl, html, conf) => '<div><div class="flex between mb1"><span class="label" style="font-size:9.5px">' + lbl + "</span>" + (conf != null ? confBar(conf) : "") + '</div><p class="kv" style="margin:0">' + html + "</p></div>";
+  const txt = (lbl, v, conf, opt) => cell(lbl, isEmpty(v) ? (opt ? none : miss) : esc(String(v).trim()), conf);
+  const money = (lbl, v, conf) => cell(lbl, eur(Number(v) || 0), conf);
+  const rate = (lbl, v, conf, opt) => cell(lbl, Number(v) ? esc(String(Number(v))) + " %" : (opt ? none : "0 %"), conf);
+  const grp = (title, cells, first) => '<p class="label mb1' + (first ? "" : " mt2") + '">' + title + '</p><div class="grid g2 gap2">' + cells.join("") + "</div>";
+
+  const cuitBad = !isEmpty(e.supplier_tax_id) && !validCuit(e.supplier_tax_id);
+  const cuitCell = cell("CUIT", isEmpty(e.supplier_tax_id) ? miss : esc(String(e.supplier_tax_id).trim()) + (cuitBad ? ' <span style="color:var(--danger-600);font-size:11px">· dígito verificador inválido</span>' : ""), c.supplier_tax_id);
+  const sumOk = Math.abs(partsSum(e) - e.total) <= 0.02;
+
+  return grp("comprobante", [
+      txt("tipo (FA, FB, FC, NCA…)", e.tipo_comprobante, c.tipo_comprobante),
+      txt("punto de venta", e.punto_venta, c.punto_venta),
+      txt("nº comprobante", e.nro_comprobante, c.nro_comprobante),
+      txt("nº original (texto completo)", e.invoice_number, c.invoice_number),
+    ], true) +
+    grp("proveedor", [txt("razón social", e.supplier_name, c.supplier_name), cuitCell]) +
+    grp("fechas", [
+      cell("fecha emisión", isEmpty(e.invoice_date) ? miss : esc(fmtDMY(e.invoice_date)), c.invoice_date),
+      cell("fecha vencimiento", isEmpty(e.due_date) ? none : esc(fmtDMY(e.due_date)), c.due_date),
+    ]) +
+    grp("importes", [
+      money("neto gravado", e.subtotal, c.subtotal), money("no gravado", e.no_gravado, null),
+      rate("IVA 1 · alícuota", e.tax_rate, c.tax_rate), money("IVA 1 · monto", e.tax_amount, c.tax_amount),
+      rate("IVA 2 · alícuota", e.iva2_rate, null, true), Number(e.iva2_rate) ? money("IVA 2 · monto", e.iva2_amount, null) : cell("IVA 2 · monto", none, null),
+      money("otros impuestos", e.otros_impuestos, null), money("total", e.total, c.total),
+    ]) +
+    '<div class="flex wrap gap1 mt1"><span class="fchip ' + (sumOk ? "fchip-ok" : "fchip-no") + '">' + (sumOk ? IC.check : IC.x) + " suma de importes = " + eur(partsSum(e)) + "</span>" +
+    (Number(e.total) > 0 ? "" : '<span class="fchip fchip-warn">' + IC.alert + " total sin leer</span>") + "</div>";
+}
 const STG_MAX = { tipo_comprobante: 20, punto_venta: 20, nro_comprobante: 30, invoice_number: 60, supplier_name: 200, supplier_tax_id: 30 };
 function cleanTxt(s) { return String(s == null ? "" : s).replace(/\s+/g, " ").trim(); }
 function validCuit(c) {
