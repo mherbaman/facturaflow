@@ -159,6 +159,7 @@ select.inp{cursor:pointer}
 .docprev{position:relative;overflow:hidden;background:linear-gradient(110deg,var(--ink-100) 30%,#f2f5f0 45%,var(--ink-100) 60%);background-size:220% 100%;animation:shimmer 1.4s linear infinite;aspect-ratio:3/4;border-radius:8px}
 .docprev img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .35s}
 .docprev.fit img{object-fit:contain;background:#e8ede7}
+.docprev iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:#e8ede7}
 .docprev.ok{animation:none;background:#e8ede7}
 .docprev.ok img{opacity:1}
 .docprev.err{animation:none;background:var(--ink-100)}
@@ -840,7 +841,31 @@ async function processOutbox() {
 /* ---------------- componentes pequeños ---------------- */
 window.docOk = function (el) { const w = el.closest(".docprev"); if (w) w.classList.add("ok"); };
 window.docErr = function (el) { const w = el.closest(".docprev"); if (w) { w.classList.add("err"); el.style.display = "none"; } };
+const PDF_MAX_MB = 4; // plan gratis de Azure (F0): máx. 4 MB y solo procesa las primeras 2 páginas
+function isPdfSrc(s) { return /^data:application\/pdf/i.test(s || "") || /\.pdf(\?|#|$)/i.test(s || ""); }
+const _pdfUrls = {};
+function pdfViewUrl(src) {
+  if (src.indexOf("data:") !== 0) return src;
+  const key = src.length + ":" + src.slice(-48);
+  if (!_pdfUrls[key]) {
+    try {
+      const b = atob(src.split(",")[1]), a = new Uint8Array(b.length);
+      for (let i = 0; i < b.length; i++) a[i] = b.charCodeAt(i);
+      _pdfUrls[key] = URL.createObjectURL(new Blob([a], { type: "application/pdf" }));
+    } catch (x) { return src; }
+  }
+  return _pdfUrls[key];
+}
+function pdfPrev(src, cls) {
+  if (cls && cls.indexOf("doc-th") >= 0) {
+    return '<div class="docprev ok ' + cls + '"><span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:11px;font-weight:800;letter-spacing:.1em;color:var(--pine-800)">PDF</span></div>';
+  }
+  const u = pdfViewUrl(src);
+  return '<div class="docprev ok fit ' + (cls || "") + '"><iframe src="' + u + '" title="PDF"></iframe>' +
+    '<a class="btn btn-sm btn-ghost" href="' + u + '" target="_blank" rel="noopener" style="position:absolute;right:8px;bottom:8px;z-index:2;background:#fff">Abrir PDF</a></div>';
+}
 function docPrev(src, cls, alt, fit) {
+  if (isPdfSrc(src)) return pdfPrev(src, cls);
   return '<div class="docprev ' + (fit ? "fit " : "") + (cls || "") + '">' +
     '<img src="' + src + '" alt="' + esc(alt || "Documento") + '" onload="docOk(this)" onerror="docErr(this)"></div>';
 }
@@ -1053,7 +1078,7 @@ function scannerView() {
       ["invoice_date", "fecha"], ["due_date", "vencimiento"], ["total", "total"],
     ];
     return '<div class="grid g2">' +
-      '<div class="card anim" style="overflow:hidden"><div class="flex between" style="padding:.7rem 1.1rem;border-bottom:1px solid var(--ink-100)"><p class="label">documento capturado</p><span class="mono xs mut">' + (r.source === "synthetic" ? "documento sintético" : "imagen original") + "</span></div>" +
+      '<div class="card anim" style="overflow:hidden"><div class="flex between" style="padding:.7rem 1.1rem;border-bottom:1px solid var(--ink-100)"><p class="label">documento capturado</p><span class="mono xs mut">' + (r.source === "synthetic" ? "documento sintético" : (isPdfSrc(r.docUrl) ? "PDF original" : "imagen original")) + "</span></div>" +
       docPrev(r.docUrl, "", "Documento " + r.extracted.invoice_number, true) +
       '<div class="flex gap1 p4" style="padding-top:.7rem;padding-bottom:.7rem">' + IC.layers + '<p class="xs mut" style="margin:0">' + r.lines + ' líneas detectadas · confianza media <strong style="color:var(--pine-700)">' + avg + " %</strong></p></div></div>" +
       '<div class="card anim d1" style="display:flex;flex-direction:column;overflow:hidden">' +
@@ -1076,11 +1101,11 @@ function scannerView() {
   return '<div class="grid g32">' +
     '<div class="card card-h anim"><div class="dropz" id="dropz" data-act="pick-file">' +
       '<span class="dropz-ic">' + IC.upload + "</span>" +
-      '<div><p class="h-md" id="dropz-title">Arrastra una factura</p><p class="small mut mt1" style="margin:.3rem 0 0">JPG o PNG · máx. 12 MB · el OCR se ejecuta en Azure</p></div>' +
+      '<div><p class="h-md" id="dropz-title">Arrastra una factura</p><p class="small mut mt1" style="margin:.3rem 0 0">JPG, PNG o PDF (se lee la primera página) · máx. 12 MB, PDF hasta 4 MB · el OCR se ejecuta en Azure</p></div>' +
       '<div class="flex gap2 wrap" style="justify-content:center">' +
       '<button class="btn btn-primary" data-act="pick-file">' + IC.upload + ' Elegir archivo</button>' +
       '<button class="btn btn-ghost" data-act="cam-open">' + IC.camera + " Usar cámara</button></div>" +
-      '<input type="file" id="file-in" accept="image/jpeg,image/png" style="display:none">' +
+      '<input type="file" id="file-in" accept="image/jpeg,image/png,application/pdf" style="display:none">' +
     "</div></div>" +
     '<div class="card anim d1 p5" style="display:flex;flex-direction:column"><p class="label">cómo escanear</p>' +
     '<p class="xs mut mt1" style="margin:.3rem 0 0">Foto de frente, con buena luz y sin recortar los bordes. El OCR extrae los datos y el auditor los revisa.</p>' +
@@ -1541,12 +1566,16 @@ function stopCamera() {
 async function handleFile(file, camDataUrl) {
   if (!file.type.match(/^image\//) && file.type !== "application/pdf") { toast("err", "Formato no admitido. Usa JPG, PNG, WEBP o PDF."); return; }
   if (file.size > 12 * 1024 * 1024) { toast("err", "El archivo supera los 12 MB permitidos."); return; }
+  if (file.type === "application/pdf" && file.size > PDF_MAX_MB * 1024 * 1024) { toast("err", "El PDF supera los " + PDF_MAX_MB + " MB que admite el OCR. Probá con una foto o un PDF más liviano."); return; }
   S.scanStep = "processing"; S.scanStage = 0; S.scanRes = null;
   S.scanFile = camDataUrl ? "camara_" + new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-") + ".jpg" : file.name;
   render();
   let dataUrl = camDataUrl || null;
   if (!dataUrl && file.type.match(/^image\//)) {
     try { dataUrl = await downscaleImage(await fileToDataUrl(file), 2000); } catch (e) { dataUrl = null; }
+  }
+  if (!dataUrl && file.type === "application/pdf") {
+    try { dataUrl = await fileToDataUrl(file); } catch (e) { dataUrl = null; }
   }
   let res;
   try { res = await performOCR(S.scanFile, file.size || (dataUrl ? dataUrl.length : 1000), dataUrl, i => { S.scanStage = i; render(); }); }
@@ -2032,7 +2061,7 @@ document.addEventListener("visibilitychange", () => {
 
 /* ---------------- OCR real: Azure Document Intelligence vía Edge Function ---------------- */
 performOCR = async function (fname, size, dataUrl, onStage) {
-  if (!dataUrl || dataUrl.indexOf("data:image/") !== 0) throw new Error("El OCR acepta imágenes JPG o PNG (PDF todavía no).");
+  if (!dataUrl || !/^data:(image\/|application\/pdf)/.test(dataUrl)) throw new Error("El OCR acepta imágenes JPG o PNG, o archivos PDF.");
   let st = 0; onStage(0);
   const tm = setInterval(() => { if (st < OCR_STAGES.length - 1) { st++; onStage(st); } }, 1100);
   try {
