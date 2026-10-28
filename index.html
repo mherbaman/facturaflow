@@ -4,12 +4,12 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <meta name="theme-color" content="#0C2019" />
-<meta name="description" content="FacturaFlow · PWA de gestión de facturas: captura OCR, revisión humana y registro definitivo." />
-<title>FacturaFlow · Sistema de Gestión de Facturas</title>
+<meta name="description" content="Enter Scan · PWA de gestión de facturas: captura OCR, revisión humana y registro definitivo." />
+<title>Enter Scan · Sistema de Gestión de Facturas</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230C2019'/%3E%3Cpath d='M20 12h24v40l-4-3.2-4 3.2-4-3.2-4 3.2-4-3.2-4 3.2z' fill='%23F2F5EF'/%3E%3Crect x='14' y='30' width='36' height='4' rx='2' fill='%23D29426'/%3E%3C/svg%3E" />
 <style>
 /* ============================================================
-   FacturaFlow — design system (single-file build)
+   Enter Scan — design system (single-file build)
    ============================================================ */
 :root{
   --paper:#F1F4EE; --card:#FBFCF9;
@@ -66,7 +66,11 @@ select.inp{cursor:pointer}
 /* ---------- layout ---------- */
 .shell{min-height:100vh}
 .side{position:fixed;inset:0 auto 0 0;width:228px;background:var(--pine-950);display:flex;flex-direction:column;z-index:40}
-.side-brand{display:flex;gap:.65rem;align-items:center;padding:1.5rem 1.25rem 1.25rem}
+.side-brand{display:flex;flex-direction:column;gap:.7rem;align-items:flex-start;padding:1.25rem 1.25rem 1.1rem}
+.brand-card{display:inline-flex;align-items:center;background:#fff;border-radius:12px;padding:.4rem .7rem;box-shadow:inset 0 0 0 1px var(--pine-700)}
+.brand-img{display:block;height:34px;width:auto;max-width:100%;mix-blend-mode:multiply}
+.brand-card.brand-mini{padding:.2rem .5rem;border-radius:10px;box-shadow:inset 0 0 0 1px rgba(16,32,26,.12)}
+.brand-card.brand-mini .brand-img{height:26px}
 .side-logo{width:40px;height:40px;border-radius:12px;background:var(--pine-800);color:var(--pine-200);display:flex;align-items:center;justify-content:center;box-shadow:inset 0 0 0 1px var(--pine-700)}
 .side-name{font-weight:800;font-size:16px;color:var(--pine-50);letter-spacing:-.01em;line-height:1.1}
 .side-sub{font-family:var(--mono);font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--pine-300)}
@@ -356,7 +360,7 @@ select.inp{cursor:pointer}
 <script>
 "use strict";
 /* ============================================================
-   FacturaFlow — aplicación completa en un único archivo
+   Enter Scan — aplicación completa en un único archivo
    Captura → DB transitoria → Revisión humana → DB definitiva
    ============================================================ */
 
@@ -552,7 +556,7 @@ function invoiceDocSVG(d) {
     '<text x="760" y="' + (tb + 116) + '" fill="#ffffff" font-size="24" font-weight="bold" text-anchor="end">' + d.total.toFixed(2) + '</text></g>' +
     '<rect x="60" y="1030" width="720" height="1.5" fill="' + L + '"/>' +
     '<text x="60" y="1062" font-family="Arial,sans-serif" font-size="15" fill="' + S2 + '">Forma de pago: transferencia · IBAN ES00 0000 0000 0000 0000 0000 0000</text>' +
-    '<text x="60" y="1086" font-family="Arial,sans-serif" font-size="13" fill="#9aa89f">Documento generado por el motor OCR de demostración de FacturaFlow.</text></svg>';
+    '<text x="60" y="1086" font-family="Arial,sans-serif" font-size="13" fill="#9aa89f">Documento generado por el motor OCR de demostración de Enter Scan.</text></svg>';
   return "image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
 }
 function synthInvoice(idx) { const e = buildExtracted(1000 + idx * 977); return { extracted: e, docUrl: invoiceDocSVG(e) }; }
@@ -610,9 +614,9 @@ function downscaleImage(dataUrl, maxSide) {
 const DB_KEY = "ff_db_single_v1";
 function seedDb() {
   const users = [
-    { id: "u-admin", email: "admin@facturaflow.app", password: "admin123", role: "admin", full_name: "Laura Cárdenas", is_active: true, created_at: daysAgo(180) },
-    { id: "u-rev", email: "revisor@facturaflow.app", password: "revisor123", role: "reviewer", full_name: "Marcos Gil", is_active: true, created_at: daysAgo(160) },
-    { id: "u-scan", email: "scanner@facturaflow.app", password: "scanner123", role: "scanner", full_name: "Sofía Herrera", is_active: true, created_at: daysAgo(150) },
+    { id: "u-admin", email: "admin@enterscan.app", password: "admin123", role: "admin", full_name: "Laura Cárdenas", is_active: true, created_at: daysAgo(180) },
+    { id: "u-rev", email: "revisor@enterscan.app", password: "revisor123", role: "reviewer", full_name: "Marcos Gil", is_active: true, created_at: daysAgo(160) },
+    { id: "u-scan", email: "scanner@enterscan.app", password: "scanner123", role: "scanner", full_name: "Sofía Herrera", is_active: true, created_at: daysAgo(150) },
   ];
   const pending = [], approved = [], audit = [];
   let n = 0;
@@ -906,6 +910,13 @@ function countUp(el) {
   requestAnimationFrame(step);
 }
 
+/* ---------------- marca ---------------- */
+const LOGO_URL = "https://res.cloudinary.com/dn8yg1w3e/image/upload/v1793150687/WhatsApp_Image_2026-10-27_at_21.11.15_dvao0i.jpg";
+function brandCard(h, mini, id) {
+  return '<span class="brand-card' + (mini ? " brand-mini" : "") + '"' + (id ? ' id="' + id + '" style="display:none"' : "") + '>' +
+    '<img class="brand-img" src="' + LOGO_URL + '" alt="Enter Gestión" style="height:' + h + 'px" decoding="async"></span>';
+}
+
 /* ---------------- vistas ---------------- */
 function loginView() {
   const ready = DB.pending.filter(p => p.status === "ready_for_review").length;
@@ -914,9 +925,9 @@ function loginView() {
   const acc = [];
   return '<div class="login-wrap">' +
     '<div class="login-side">' +
-      '<div class="flex gap2 anim"><span class="side-logo">' + IC.logo + '</span><div><p class="side-name" style="font-size:19px">FacturaFlow</p><p class="side-sub">gestión de facturas · PWA</p></div></div>' +
+      '<div class="anim">' + brandCard(46) + '<p class="side-name" style="font-size:19px;margin-top:.8rem">Enter Scan</p><p class="side-sub">gestión de facturas · PWA</p></div>' +
       '<h1 class="anim d1" style="font-size:clamp(26px,3vw,38px);font-weight:800;letter-spacing:-.02em;line-height:1.12;margin:2.2rem 0 .6rem">Del papel al registro definitivo, con revisión humana.</h1>' +
-      '<p class="anim d2 mut" style="color:rgba(218,238,226,.7);font-size:14px;max-width:44ch;margin:0">Captura facturas con la cámara, el OCR extrae los campos y un revisor valida antes de escribir en la base de datos definitiva.</p>' +
+      '<p class="anim d2 mut" style="color:rgba(218,238,226,.7);font-size:14px;max-width:44ch;margin:0">Captura facturas con la cámara o sube documentos PDF, el OCR extrae los campos y un revisor valida antes de escribir en la base de datos definitiva.</p>' +
       '<div class="col gap2 mt3 anim d3">' +
         '<div class="flow-box"><span>' + IC.scan + '</span><span><span class="fb-n">1 · captura</span><br><span class="fb-t">Escaneadas hoy</span></span><span class="fb-v">' + today + "</span></div>" +
         '<div class="flow-conn"><svg width="14" height="26" viewBox="0 0 14 26"><path d="M7 0v26" stroke="currentColor" stroke-width="2" class="dash-anim"/></svg></div>' +
@@ -931,27 +942,19 @@ function loginView() {
       "</div>" +
     "</div>" +
     '<div class="login-main"><div class="login-card">' +
-      '<p class="label anim">acceso de demostración</p>' +
-      '<h2 class="h-lg anim d1 mt1" style="font-size:24px">Entra con un rol del equipo</h2>' +
-      '<p class="small mut anim d1 mt1" style="margin:.3rem 0 0">Cada rol ve módulos y acciones distintas, como en producción.</p>' +
-      '<div class="col gap2 mt2">' + acc.map((a, i) =>
-        '<button class="demo-btn anim d' + (i + 2) + '" style="border-left-color:' + a.bord + '" data-act="demo-login" data-e="' + a.e + '" data-p="' + a.p + '">' +
-          avatar(a.n, 38) +
-          '<span class="flex1"><span class="flex gap2 between"><span style="font-weight:700;font-size:14.5px">' + a.n + '</span><span class="label" style="color:var(--ink-300)">' + a.r + "</span></span>" +
-          '<span class="flex gap1 wrap mt1">' + a.perms.map(p => '<span class="perm-tag">' + p + "</span>").join("") + "</span></span>" +
-          '<span style="color:var(--ink-300)">' + IC.arrowr + "</span></button>").join("") +
-      "</div>" +
-      '<div class="flex gap2 mt3 anim d5"><span style="flex:1;height:1px;background:var(--ink-200)"></span><span class="label" style="color:var(--ink-300)">o con credenciales</span><span style="flex:1;height:1px;background:var(--ink-200)"></span></div>' +
-      '<form class="col gap2 anim d5" data-form="login">' +
-        '<div><label class="label mb1" style="display:block" for="lg-e">correo</label><input class="inp" id="lg-e" type="email" placeholder="admin@facturaflow.app" autocomplete="username"></div>' +
+      '<p class="label anim">acceso</p>' +
+      '<h2 class="h-lg anim d1 mt1" style="font-size:24px">Inicia sesión</h2>' +
+      '<p class="small mut anim d1 mt1" style="margin:.3rem 0 0">Cada rol ve módulos y acciones distintas.</p>' +
+      '<form class="col gap2 anim d5" data-form="login" style="margin-top:1.25rem">' +
+        '<div><label class="label mb1" style="display:block" for="lg-e">correo</label><input class="inp" id="lg-e" type="email" placeholder="tu@correo.com" autocomplete="username"></div>' +
         '<div><label class="label mb1" style="display:block" for="lg-p">contraseña</label>' +
           '<div class="passwrap"><input class="inp" id="lg-p" type="password" placeholder="••••••••" autocomplete="current-password">' +
           '<button type="button" data-act="pass-show" data-for="lg-p" aria-label="Mostrar contraseña">' + IC.eye + "</button></div></div>" +
         '<div id="login-err"></div>' +
         '<button class="btn btn-primary" id="login-btn" type="submit">' + IC.zap + " Iniciar sesión</button>" +
       "</form>" +
-      '<div class="banner banner-ok anim d6 mt2" style="font-size:12px">' + IC.key + "<span><strong>¿Credenciales propias?</strong> Entra como administración y crea usuarios en el módulo <strong>Usuarios</strong> (email, contraseña y rol). También puedes restablecer contraseñas ahí, o cambiar la tuya con el icono de llave.</span></div>" +
-      '<p class="mono xs txt-c anim d7 mt2" style="color:var(--ink-300)">un único archivo estático · sin servidores ni websockets · datos en este navegador</p>' +
+      '<div class="banner banner-ok anim d6 mt2" style="font-size:12px">' + IC.key + "<span><strong>¿No tienes usuario?</strong> Pídele el alta a administración. Las cuentas y contraseñas se gestionan desde el panel de Supabase.</span></div>" +
+      '<p class="mono xs txt-c anim d7 mt2" style="color:var(--ink-300)">acceso solo para usuarios autorizados</p>' +
     "</div></div></div>" + toastLayer();
 }
 
@@ -1410,16 +1413,16 @@ function layout() {
     : S.view === "audit" ? auditView() : usersView();
 
   return '<div class="shell">' +
-    '<aside class="side"><div class="side-brand"><span class="side-logo">' + IC.logo + '</span><div><p class="side-name">FacturaFlow</p><p class="side-sub">gestión de facturas</p></div></div>' +
+    '<aside class="side"><div class="side-brand">' + brandCard(34) + '<div><p class="side-name">Enter Scan</p><p class="side-sub">gestión de facturas</p></div></div>' +
     '<nav class="side-nav">' + NAV.map(n => '<button class="nav-btn ' + (S.view === n[0] ? "on" : "") + '" data-act="nav" data-view="' + n[0] + '">' + n[2] + "<span>" + n[1] + "</span>" + (n[0] === "review" && ready ? '<span class="nav-badge">' + ready + "</span>" : "") + "</button>").join("") + "</nav>" +
-    '<div class="side-note"><p class="label" style="color:var(--pine-300)">entorno demo</p><p>API simulada en el dispositivo · PostgreSQL y S3 representados con almacenamiento local.</p></div>' +
+    '<div class="side-note"><p class="label" style="color:var(--pine-300)">entorno de pruebas</p><p>Datos y archivos en la nube (Supabase) · lectura con OCR. Nada llega al sistema del cliente hasta que un auditor aprueba.</p></div>' +
     '<div class="side-user"><div class="side-user-row">' + avatar(u.full_name, 34) +
     '<div class="flex1" style="min-width:0"><p class="u-n">' + esc(u.full_name) + '</p><p class="u-r">' + ROLE_LABEL[u.role] + "</p></div>" +
     '<button class="icon-btn" data-act="pass-open" title="Cambiar contraseña" aria-label="Cambiar contraseña">' + IC.key + "</button>" +
     '<button class="icon-btn" data-act="logout" title="Cerrar sesión" aria-label="Cerrar sesión">' + IC.logout + "</button>" +
     "</div></div></aside>" +
     '<div class="main"><header class="topbar"><div class="topbar-in">' +
-    '<span class="side-logo" style="width:36px;height:36px;display:none" id="mlogo">' + IC.logo + "</span>" +
+    brandCard(26, true, "mlogo") +
     '<div class="flex1" style="min-width:0"><h1 style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + meta[0] + '</h1><p class="sub" style="display:none;margin:.1rem 0 0" id="msub">' + meta[1] + "</p></div>" +
     (DB.outbox.length ? '<span class="chip chip-off">' + (S.syncing ? '<span class="spin" style="display:flex">' + IC.sync + "</span>" : IC.sync) + " " + DB.outbox.length + " en cola</span>" : "") +
     chip +
@@ -1429,7 +1432,7 @@ function layout() {
     '<nav class="mnav">' + NAV.map(n => '<button class="nav-btn ' + (S.view === n[0] ? "on" : "") + '" data-act="nav" data-view="' + n[0] + '">' + n[2] + "<span>" + n[1] + "</span></button>").join("") + "</nav>" +
     "</header>" +
     '<main class="content">' + viewHtml + "</main>" +
-    '<footer class="foot"><p>FacturaFlow · demo estática — Captura → DB transitoria → Revisión humana → DB definitiva</p></footer>' +
+    '<footer class="foot"><p>Enter Scan — Captura → DB transitoria → Revisión humana → DB definitiva</p></footer>' +
     "</div>" + modalLayer() + toastLayer() + "</div>";
 }
 
@@ -1541,7 +1544,7 @@ function startCamera() {
   const video = $("#cam-video");
   if (!video) return;
   if (camStream) { video.srcObject = camStream; return; }
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { showCamErr("Este navegador no expone la cámara. Usa la subida de archivo o las facturas demo."); return; }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { showCamErr("Este navegador no expone la cámara. Usa la subida de archivo."); return; }
   navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
     .then(stream => {
       camStream = stream;
@@ -1549,7 +1552,7 @@ function startCamera() {
       if (v) v.srcObject = stream;
       else stream.getTracks().forEach(t => t.stop());
     })
-    .catch(() => showCamErr("No se pudo acceder a la cámara. Concede el permiso o usa la subida de archivo / facturas demo."));
+    .catch(() => showCamErr("No se pudo acceder a la cámara. Concede el permiso o usa la subida de archivo."));
 }
 function showCamErr(msg) {
   const e = $("#cam-err");
@@ -1669,6 +1672,7 @@ function doApprove() {
   if (!rec || !ED) return;
   ["tipo_comprobante", "punto_venta", "nro_comprobante", "invoice_number", "supplier_name", "supplier_tax_id"].forEach(k => { ED[k] = cleanTxt(ED[k]); });
   ED.tipo_comprobante = ED.tipo_comprobante.toUpperCase();
+  ED.supplier_tax_id = fmtCuit(ED.supplier_tax_id);
   const stgOk = stgCheck(ED);
   if (stgOk.msgs.length) { toast("err", stgOk.msgs[0]); return; }
   if (!S.online) {
@@ -1797,7 +1801,7 @@ document.addEventListener("click", e => {
     if (S.cat !== "all") list = list.filter(a => a.category === S.cat);
     if (S.qInv.trim()) { const q = S.qInv.trim().toLowerCase(); list = list.filter(a => a.supplier_name.toLowerCase().includes(q) || a.invoice_number.toLowerCase().includes(q)); }
     if (!list.length) { toast("warn", "No hay facturas aprobadas que exportar"); return; }
-    downloadCSV("facturaflow_definitivas.csv",
+    downloadCSV("enterscan_definitivas.csv",
       ["Nº factura", "Proveedor", "CUIT", "Fecha", "Vencimiento", "Base", "IVA", "Total", "Divisa", "Categoría", "Revisada por"],
       list.map(r => { const rv = userById(r.reviewed_by); return [r.invoice_number, r.supplier_name, r.supplier_tax_id, r.invoice_date, r.due_date, r.subtotal.toFixed(2), r.tax_amount.toFixed(2), r.amount.toFixed(2), r.currency, r.category, rv ? rv.full_name : "-"]; }));
     audit(S.user, "data.export", "invoices_approved", "-", "Exportación CSV · " + list.length + " registros");
@@ -2117,6 +2121,7 @@ function scanSummaryHtml(r) {
     (Number(e.total) > 0 ? "" : '<span class="fchip fchip-warn">' + IC.alert + " total sin leer</span>") + "</div>";
 }
 const STG_MAX = { tipo_comprobante: 20, punto_venta: 20, nro_comprobante: 30, invoice_number: 60, supplier_name: 200, supplier_tax_id: 30 };
+function fmtCuit(c) { const d = String(c == null ? "" : c).replace(/\D/g, ""); return d.length === 11 ? d.slice(0, 2) + "-" + d.slice(2, 10) + "-" + d.slice(10) : cleanTxt(c); }
 function cleanTxt(s) { return String(s == null ? "" : s).replace(/\s+/g, " ").trim(); }
 function validCuit(c) {
   const d = String(c || "").replace(/\D/g, "");
@@ -2164,7 +2169,7 @@ function mirror(x) {
     tipo_comprobante: t(x.tipo_comprobante), punto_venta: t(x.punto_venta), nro_comprobante: t(x.nro_comprobante),
     nro_comprobante_orig: t(x.invoice_number) ? t(x.invoice_number).slice(0, 60) : null,
     fecha_emision: dmy(x.invoice_date), fecha_vencimiento: dmy(x.due_date),
-    nombre_proveedor: t(x.supplier_name), cuit: t(x.supplier_tax_id),
+    nombre_proveedor: t(x.supplier_name), cuit: t(fmtCuit(x.supplier_tax_id)),
     neto_gravado: n2(x.subtotal), monto_no_gravado: n2(x.no_gravado),
     alicuota_iva_1: rate(x.tax_rate), monto_iva_1: n2(x.tax_amount),
     alicuota_iva_2: has2 ? rate(x.iva2_rate) : null, monto_iva_2: has2 ? n2(x.iva2_amount) : null,
