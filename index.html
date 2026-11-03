@@ -1080,7 +1080,7 @@ function scannerView() {
     return '<div class="grid g2">' +
       '<div class="card anim" style="overflow:hidden"><div class="flex between" style="padding:.7rem 1.1rem;border-bottom:1px solid var(--ink-100)"><p class="label">documento capturado</p><span class="mono xs mut">' + (r.source === "synthetic" ? "documento sintético" : (isPdfSrc(r.docUrl) ? "PDF original" : "imagen original")) + "</span></div>" +
       docPrev(r.docUrl, "", "Documento " + r.extracted.invoice_number, true) +
-      '<div class="flex gap1 p4" style="padding-top:.7rem;padding-bottom:.7rem">' + IC.layers + '<p class="xs mut" style="margin:0">' + r.lines + ' líneas detectadas · confianza media <strong style="color:var(--pine-700)">' + avg + " %</strong></p></div></div>" +
+      '<div class="flex gap1 p4" style="padding-top:.7rem;padding-bottom:.7rem">' + IC.layers + '<p class="xs mut" style="margin:0">' + (r.lines ? r.lines + ' líneas detectadas · ' : 'Lectura con IA · ') + 'confianza media <strong style="color:var(--pine-700)">' + avg + " %</strong></p></div></div>" +
       '<div class="card anim d1" style="display:flex;flex-direction:column;overflow:hidden">' +
       '<div class="flex between" style="padding:.7rem 1.1rem;border-bottom:1px solid var(--ink-100)"><p class="label">datos extraídos · base transitoria</p><span class="fchip ' + (lowN ? "fchip-warn" : "fchip-ok") + '">' + (lowN ? IC.alert + " " + lowN + " campo(s) a verificar" : IC.check + " confianza alta") + "</span></div>" +
       '<div class="flex1 p4">' + scanSummaryHtml(r) +
@@ -1673,6 +1673,7 @@ function doApprove() {
   ["tipo_comprobante", "punto_venta", "nro_comprobante", "invoice_number", "supplier_name", "supplier_tax_id"].forEach(k => { ED[k] = cleanTxt(ED[k]); });
   ED.tipo_comprobante = ED.tipo_comprobante.toUpperCase();
   ED.supplier_tax_id = fmtCuit(ED.supplier_tax_id);
+  ED.punto_venta = fmtPv(ED.punto_venta);
   const stgOk = stgCheck(ED);
   if (stgOk.msgs.length) { toast("err", stgOk.msgs[0]); return; }
   if (!S.online) {
@@ -2122,6 +2123,8 @@ function scanSummaryHtml(r) {
 }
 const STG_MAX = { tipo_comprobante: 20, punto_venta: 20, nro_comprobante: 30, invoice_number: 60, supplier_name: 200, supplier_tax_id: 30 };
 function fmtCuit(c) { const d = String(c == null ? "" : c).replace(/\D/g, ""); return d.length === 11 ? d.slice(0, 2) + "-" + d.slice(2, 10) + "-" + d.slice(10) : cleanTxt(c); }
+// Punto de venta con 5 dígitos (formato del sistema del cliente): 0002 -> 00002, 23 -> 00023
+function fmtPv(v) { const d = String(v == null ? "" : v).replace(/\D/g, ""); return d && d.length <= 5 ? d.padStart(5, "0") : cleanTxt(v); }
 function cleanTxt(s) { return String(s == null ? "" : s).replace(/\s+/g, " ").trim(); }
 function validCuit(c) {
   const d = String(c || "").replace(/\D/g, "");
@@ -2166,7 +2169,7 @@ function mirror(x) {
   const rate = v => (!Number(v)) ? null : String(Number(v));
   const has2 = !!Number(x.iva2_rate);
   return {
-    tipo_comprobante: t(x.tipo_comprobante), punto_venta: t(x.punto_venta), nro_comprobante: t(x.nro_comprobante),
+    tipo_comprobante: t(x.tipo_comprobante), punto_venta: t(fmtPv(x.punto_venta)), nro_comprobante: t(x.nro_comprobante),
     nro_comprobante_orig: t(x.invoice_number) ? t(x.invoice_number).slice(0, 60) : null,
     fecha_emision: dmy(x.invoice_date), fecha_vencimiento: dmy(x.due_date),
     nombre_proveedor: t(x.supplier_name), cuit: t(fmtCuit(x.supplier_tax_id)),
